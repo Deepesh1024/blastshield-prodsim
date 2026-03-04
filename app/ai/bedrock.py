@@ -28,14 +28,22 @@ MAX_RETRIES = 3
 INITIAL_BACKOFF = 1.0  # seconds
 
 FALLBACK_RESPONSE = {
-    "timeline": "Simulator fallback — default timeline: 1 rps stable → 50 rps shows first errors → 100 rps cascading failures",
-    "propagation": "Failure starts at the I/O boundary, propagates to dependent handlers, then affects all downstream endpoints.",
-    "outage_scenario": "Under sustained load, unguarded shared state and missing error handling cause cascading 500 errors. "
-                       "The system appears healthy at low traffic but degrades rapidly past 50 concurrent users.",
-    "blast_radius": "All detected API endpoints are affected. Functions without retry logic or input validation are primary failure points.",
-    "explanation": "Simulator fallback: The code lacks concurrency guards (locks/atomic ops), retry logic for I/O calls, "
-                   "and comprehensive input validation. These are the top 3 causes of production outages in Python web services.",
-    "patches": "",
+    "risk_score": 0,
+    "severity": "UNKNOWN",
+    "confidence": 0,
+    "evidence": {
+        "lost_updates": 0,
+        "timeouts": 0,
+        "exceptions": 0,
+        "slow_responses": 0,
+        "edge_failures": 0,
+    },
+    "failure_points": [],
+    "timeline": "AI analysis unavailable — run drills completed but narrative generation failed.",
+    "blast_radius": [],
+    "explanation": "AI analysis was not available. Review the drill results above for concurrency, latency, and chaos findings. "
+                   "Check for shared mutable state, missing error handling, and unguarded I/O calls.",
+    "patches": [],
 }
 
 
