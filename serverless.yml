@@ -1,0 +1,52 @@
+service: blastshield-agent
+
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: python3.11
+  region: us-east-1
+  memorySize: 512
+  timeout: 30
+  architecture: arm64
+  environment:
+    PYTHONPATH: /var/task
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - bedrock:InvokeModel
+          Resource: "*"
+
+functions:
+  api:
+    handler: handler.handler
+    events:
+      - httpApi:
+          path: /{proxy+}
+          method: ANY
+      - httpApi:
+          path: /
+          method: ANY
+
+package:
+  patterns:
+    - "!node_modules/**"
+    - "!.git/**"
+    - "!__pycache__/**"
+    - "!*.pyc"
+    - "!venv/**"
+    - "!.venv/**"
+    - "!examples/**"
+    - "!tests/**"
+    - "!README.md"
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    dockerizePip: false
+    slim: true
+    strip: false

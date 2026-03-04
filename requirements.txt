@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+boto3
+aiofiles
+httpx
+python-multipart
+mangum
