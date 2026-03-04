@@ -61,20 +61,20 @@ Below is the complete analysis data from our Production Failure Simulator. Your 
 Based on ALL the above data, produce a JSON response with EXACTLY these keys:
 
 {{
-  "timeline": "A realistic timeline showing how the system degrades: 1 rps → 100 rps → 1k rps. Describe what breaks at each stage.",
-  "propagation": "How a single failure propagates across files and components. Be specific about which functions affect which.",
-  "outage_scenario": "A realistic 3-paragraph production outage story. Include timestamps, team reactions, and resolution steps.",
-  "blast_radius": "List all affected API endpoints and components. Explain the cascading impact.",
-  "explanation": "A plain-English teaching note explaining the top 3 reliability risks found, suitable for a junior developer.",
+  "timeline": "A data-driven load test timeline. Use REAL numbers: at 1 rps show baseline metrics (latency, error rate). At 100 rps show how many threads failed, which functions broke, concrete p99 latencies (e.g. 1200ms). At 1000 rps show exact failure counts, timeout rates, cascading failures. Use numbers like '23/30 threads saw lost updates' or 'p99 latency spiked to 1847ms'. NO fictional timestamps.",
+  "propagation": "How a single failure propagates across files and components. Be specific about which functions affect which. Include concrete numbers like 'db.execute_query timeout causes 78% of create_order calls to fail'.",
+  "outage_scenario": "A realistic production incident report. Start with the trigger event and load level. Describe cascade with real numbers: error rates, request counts, latency percentiles. Describe what metrics you'd see on a Grafana dashboard. End with root cause and fix. NO fictional clock times like '09:15 AM'.",
+  "blast_radius": "List all affected API endpoints and components with impact severity. Use numbers: '6/6 endpoints affected, /create 92% failure rate, /health degraded to 3s response time'.",
+  "explanation": "A plain-English teaching note explaining the top 3 reliability risks found, suitable for a junior developer. Reference specific file:line locations.",
   "patches": "Provide unified diff patches for the most critical fixes. Use standard diff format with --- and +++ headers."
 }}
 
 CRITICAL INSTRUCTIONS:
 1. Return ONLY valid JSON — no markdown fences, no explanatory text before or after.
-2. Make the outage_scenario feel real and dramatic — like a PagerDuty incident.
-3. The patches should be actual unified diffs that would fix the most critical issues found.
-4. Reference specific function names, file names, and line-level details from the source code.
-5. The timeline should show realistic RPS thresholds where each failure kicks in.
+2. Use CONCRETE NUMBERS throughout — thread counts, error percentages, latency values, request counts. Make them realistic but based on the actual drill findings above.
+3. DO NOT use fictional timestamps like "09:15 AM" or "Monday morning". Describe events by load level and sequence.
+4. The patches should be actual unified diffs that would fix the most critical issues found.
+5. Reference specific function names, file names, and line-level details from the source code.
 """
 
     return prompt
