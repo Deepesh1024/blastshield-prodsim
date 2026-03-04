@@ -1,9 +1,13 @@
 """
 scan.py — POST /scan endpoint. Orchestrates the full simulation pipeline.
+V2: Adds scan_id, S3 upload, EC2 sandbox execution, and merged results.
 """
+import io
 import json
 import logging
 import time
+import uuid
+import zipfile
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -21,51 +25,42 @@ from app.core.drills import (
 )
 from app.core.edge_cases import run_edge_cases
 from app.core.curl_runner import run_curl_tests
+from app.core.s3_storage import upload_artifact
+from app.core.ec2_client import send_to_sandbox, FALLBACK_RESULT
 from app.ai.bedrock import invoke_bedrock, FALLBACK_RESPONSE
 from app.ai.prompt import build_bedrock_prompt
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Maximum execution budget (seconds)
-MAX_EXECUTION_TIME = 3.5
+MAX_EXECUTION_TIME = 25  # budget raised for EC2 round-trip
 
 
 def _compute_overall_score(
     drills: dict,
     edge_cases: list[dict],
     curl_results: list[dict],
+    deployment: dict,
 ) -> int:
     """
-    Compute a 0-100 reliability score.
+    Compute 0-100 reliability score.
     Higher = more reliable. Deductions for each issue found.
     """
     score = 100
 
     # Deduct for concurrency issues
     for issue in drills.get("concurrency", []):
-        if issue.get("severity") == "high":
-            score -= 15
-        elif issue.get("severity") == "medium":
-            score -= 8
-        else:
-            score -= 3
+        sev = issue.get("severity", "low")
+        score -= {"high": 15, "medium": 8}.get(sev, 3)
 
     # Deduct for latency issues
     for issue in drills.get("latency", []):
-        if issue.get("severity") == "high":
-            score -= 10
-        else:
-            score -= 3
+        score -= 10 if issue.get("severity") == "high" else 3
 
     # Deduct for chaos issues
     for issue in drills.get("chaos", []):
-        if issue.get("severity") == "critical":
-            score -= 12
-        elif issue.get("severity") == "high":
-            score -= 8
-        else:
-            score -= 3
+        sev = issue.get("severity", "low")
+        score -= {"critical": 12, "high": 8}.get(sev, 3)
 
     # Deduct for edge case failures
     for ec in edge_cases:
@@ -81,7 +76,22 @@ def _compute_overall_score(
         elif cr.get("verdict") == "degraded":
             score -= 5
 
+    # Deduct for deployment/runtime failures
+    if deployment.get("deployment_status") == "failure":
+        score -= 20
+    if deployment.get("runtime_errors"):
+        score -= min(len(deployment["runtime_errors"]) * 5, 25)
+
     return max(0, min(100, score))
+
+
+def _files_to_zip_bytes(files: list[dict]) -> bytes:
+    """Convert extracted files list to a zip archive in memory."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in files:
+            zf.writestr(f["file"], f["content"])
+    return buf.getvalue()
 
 
 async def _extract_input(request: Request) -> tuple:
@@ -128,25 +138,31 @@ async def _extract_input(request: Request) -> tuple:
 async def scan(request: Request):
     """
     Production Failure Simulator endpoint.
-    Accepts raw Python code OR a .zip file upload.
-    Returns full simulation results including Bedrock AI analysis.
+    V2: Full pipeline with S3 upload, EC2 sandbox execution, and AI analysis.
     """
     start_time = time.monotonic()
+    scan_id = str(uuid.uuid4())
 
     try:
         # ── Step 1: Extract files ──────────────────────────────
         input_type, input_data = await _extract_input(request)
         if input_type == "zip":
             files = extract_files_from_zip(input_data)
+            zip_bytes = input_data  # already a zip
             if not files:
                 raise HTTPException(400, "No .py files found in the zip archive.")
         else:
             files = extract_files_from_code(input_data)
+            zip_bytes = _files_to_zip_bytes(files)
 
-        # ── Step 2: Detect endpoints ───────────────────────────
+        # ── Step 2: Upload to S3 ──────────────────────────────
+        s3_result = upload_artifact(scan_id, zip_bytes)
+        s3_info = s3_result or {"bucket": "unavailable", "key": "unavailable"}
+
+        # ── Step 3: Detect endpoints ──────────────────────────
         endpoints = detect_endpoints(files)
 
-        # ── Step 3: Run drills ─────────────────────────────────
+        # ── Step 4: Run local drills ──────────────────────────
         concurrency = run_concurrency_drill(files)
         latency = run_latency_drill(files)
         chaos = run_chaos_drill(files)
@@ -157,16 +173,27 @@ async def scan(request: Request):
             "chaos": chaos,
         }
 
-        # ── Step 4: Edge case tests ────────────────────────────
+        # ── Step 5: Edge case tests ───────────────────────────
         edge_cases = run_edge_cases(endpoints) if endpoints else []
 
-        # ── Step 5: Curl-style load tests ──────────────────────
+        # ── Step 6: Curl-style load tests ─────────────────────
         curl_results = run_curl_tests(endpoints)
 
-        # ── Step 6: Overall score ──────────────────────────────
-        overall_score = _compute_overall_score(drills, edge_cases, curl_results)
+        # ── Step 7: EC2 sandbox execution ─────────────────────
+        if s3_result:
+            deployment = send_to_sandbox(
+                scan_id=scan_id,
+                s3_bucket=s3_info["bucket"],
+                s3_key=s3_info["key"],
+                timeout=10,
+            )
+        else:
+            deployment = {**FALLBACK_RESULT, "deployment_status": "s3_unavailable"}
 
-        # ── Step 7: Bedrock AI call ────────────────────────────
+        # ── Step 8: Overall score ─────────────────────────────
+        overall_score = _compute_overall_score(drills, edge_cases, curl_results, deployment)
+
+        # ── Step 9: Bedrock AI analysis ───────────────────────
         elapsed = time.monotonic() - start_time
         if elapsed < MAX_EXECUTION_TIME:
             prompt = build_bedrock_prompt(
@@ -175,18 +202,23 @@ async def scan(request: Request):
             )
             bedrock_story = invoke_bedrock(prompt)
         else:
-            logger.warning(f"Skipping Bedrock — {elapsed:.1f}s elapsed, budget exceeded.")
+            logger.warning(f"Skipping Bedrock — {elapsed:.1f}s elapsed.")
             bedrock_story = FALLBACK_RESPONSE
 
-        # ── Build response ─────────────────────────────────────
+        # ── Build response ────────────────────────────────────
         return JSONResponse(content={
+            "scan_id": scan_id,
             "overall_score": overall_score,
-            "files": [{"file": f["file"], "lines": len(f["content"].splitlines())} for f in files],
-            "endpoints": endpoints,
-            "drills": drills,
-            "edge_cases": edge_cases,
-            "curl_results": curl_results,
-            "bedrock_story": bedrock_story,
+            "simulation_results": {
+                "files": [{"file": f["file"], "lines": len(f["content"].splitlines())} for f in files],
+                "endpoints": endpoints,
+                "drills": drills,
+                "edge_cases": edge_cases,
+                "curl_results": curl_results,
+            },
+            "deployment_validation": deployment,
+            "ai_analysis": bedrock_story,
+            "s3_artifact": s3_info,
         })
 
     except HTTPException:
@@ -196,13 +228,17 @@ async def scan(request: Request):
         return JSONResponse(
             status_code=200,
             content={
+                "scan_id": scan_id,
                 "overall_score": 0,
-                "files": [],
-                "endpoints": [],
-                "drills": {"concurrency": [], "latency": [], "chaos": []},
-                "edge_cases": [],
-                "curl_results": [],
-                "bedrock_story": FALLBACK_RESPONSE,
+                "simulation_results": {
+                    "files": [],
+                    "endpoints": [],
+                    "drills": {"concurrency": [], "latency": [], "chaos": []},
+                    "edge_cases": [],
+                    "curl_results": [],
+                },
+                "deployment_validation": FALLBACK_RESULT,
+                "ai_analysis": FALLBACK_RESPONSE,
                 "error": str(e),
             },
         )

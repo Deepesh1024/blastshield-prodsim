@@ -11,13 +11,21 @@ provider:
   architecture: arm64
   environment:
     PYTHONPATH: /var/task
+    S3_BUCKET: blastshield-artifacts
+    EC2_SANDBOX_URL: ${env:EC2_SANDBOX_URL, 'http://localhost:9000'}
   iam:
     role:
       statements:
         - Effect: Allow
           Action:
             - bedrock:InvokeModel
+            - bedrock:InvokeModelWithResponseStream
           Resource: "*"
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+            - s3:GetObject
+          Resource: "arn:aws:s3:::blastshield-artifacts/*"
 
 functions:
   api:
@@ -39,6 +47,7 @@ package:
     - "!venv/**"
     - "!.venv/**"
     - "!examples/**"
+    - "!ec2_sandbox/**"
     - "!tests/**"
     - "!README.md"
 
