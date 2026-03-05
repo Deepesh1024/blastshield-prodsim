@@ -275,9 +275,11 @@ def _parse_bedrock_json(text: str) -> dict:
 
 def _validate_keys(parsed: dict) -> dict:
     """Ensure all required keys exist, filling from fallback if needed."""
-    required = ["timeline", "propagation", "outage_scenario",
-                 "blast_radius", "explanation", "patches"]
+    required = ["risk_score", "severity", "confidence", "evidence",
+                 "failure_points", "timeline", "blast_radius",
+                 "explanation", "patches"]
     for key in required:
         if key not in parsed:
-            parsed[key] = FALLBACK_RESPONSE[key]
+            parsed[key] = FALLBACK_RESPONSE.get(key, "")
     return parsed
+
