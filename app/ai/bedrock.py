@@ -32,16 +32,16 @@ FALLBACK_RESPONSE = {
     "severity": "UNKNOWN",
     "confidence": 0,
     "evidence": {
-        "lost_updates": 0,
-        "timeouts": 0,
-        "exceptions": 0,
-        "slow_responses": 0,
-        "edge_failures": 0,
+        "lost_updates": {"count": 0, "detail": "AI unavailable"},
+        "timeouts": {"count": 0, "detail": "AI unavailable"},
+        "exceptions": {"count": 0, "detail": "AI unavailable"},
+        "slow_responses": {"count": 0, "detail": "AI unavailable"},
+        "edge_failures": {"count": 0, "detail": "AI unavailable"},
     },
-    "failure_points": [],
-    "timeline": "AI analysis unavailable — run drills completed but narrative generation failed.",
+    "failure_points": {},
+    "timeline": "AI analysis unavailable — drills completed but narrative generation failed.",
     "blast_radius": [],
-    "explanation": "AI analysis was not available. Review the drill results above for concurrency, latency, and chaos findings. "
+    "explanation": "AI analysis was not available. Review the drill results for concurrency, latency, and chaos findings. "
                    "Check for shared mutable state, missing error handling, and unguarded I/O calls.",
     "patches": [],
 }

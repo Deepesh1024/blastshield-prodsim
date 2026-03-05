@@ -61,23 +61,44 @@ lost_updates={lost_updates}, shared_state={shared_state}, timeouts={timeouts}, s
 Return ONLY valid JSON with these keys:
 
 {{
- "risk_score": <0-100, 100=safe, 0=broken>,
- "severity": "CRITICAL|HIGH|MEDIUM|LOW",
+ "risk_score": <0-100 where higher=more dangerous. Use this scale: 0-25=LOW, 26-50=MEDIUM, 51-75=HIGH, 76-100=CRITICAL. Score MUST match severity.>,
+ "severity": "CRITICAL|HIGH|MEDIUM|LOW — must match risk_score range",
  "confidence": <0-100>,
- "evidence": {{"lost_updates": <realistic_number>, "timeouts": <num>, "exceptions": <num>, "slow_responses": <num>, "edge_failures": <num>}},
- "failure_points": [{{"location": "file.py:line", "description": "what's wrong", "severity": "critical|high|medium"}}],
- "timeline": "0s traffic begins\\n7s thread saturation (23/30 blocked)\\n15s duplicate IDs (47 in 1000 req)\\n25s checkout fails (p99: 2340ms)\\n40s cascade",
- "blast_radius": ["Service1", "Service2"],
- "explanation": "2-3 paragraphs speaking to the developer: You did X in file.py:12, this causes Y under load. Change it to Z. Be specific with file:line refs.",
- "patches": [{{"file": "x.py", "issue": "race condition", "fix_description": "add lock", "code_before": "counter += 1", "code_after": "with lock:\\n    counter += 1"}}]
+ "evidence": {{
+   "lost_updates": {{"count": <realistic_scaled_number>, "detail": "short explanation of what this means"}},
+   "timeouts": {{"count": <num>, "detail": "short explanation"}},
+   "exceptions": {{"count": <num>, "detail": "short explanation"}},
+   "slow_responses": {{"count": <num>, "detail": "short explanation"}},
+   "edge_failures": {{"count": <num>, "detail": "short explanation"}}
+ }},
+ "failure_points": {{
+   "Input Validation": [{{"location": "file.py:line", "description": "what's wrong"}}],
+   "Concurrency": [{{"location": "file.py:line", "description": "what's wrong"}}],
+   "Data Consistency": [{{"location": "file.py:line", "description": "what's wrong"}}],
+   "Error Handling": [{{"location": "file.py:line", "description": "what's wrong"}}]
+ }},
+ "timeline": "0s traffic begins\\n7s thread saturation (23/30 blocked)\\n15s duplicate IDs (47/1000 req)\\n25s checkout fails (p99: 2340ms)\\n40s cascading service failures",
+ "blast_radius": ["Affected Service/Component 1", "Affected Service/Component 2"],
+ "explanation": "Multi-paragraph SRE incident explanation. First paragraph: describe the root cause and how shared state is corrupted. Second paragraph: describe how malformed requests trigger unhandled exceptions. Third paragraph: describe how these combine under load to cause cascading failures. Write like an SRE postmortem.",
+ "patches": [
+   {{
+     "title": "Fix 1 — Input validation",
+     "file": "x.py",
+     "code_before": "item = data[\\"item\\"]",
+     "code_after": "item = data.get(\\"item\\")\\nif item is None:\\n    return {{\\"error\\": \\"Item not specified\\"}}",
+     "reason": "Prevents KeyError crashes from malformed requests"
+   }}
+ ]
 }}
 
 RULES:
 1. ONLY valid JSON, no markdown
-2. Use realistic FABRICATED numbers for evidence (scale up from drill counts)
-3. Timeline uses seconds (0s, 7s, 15s) with concrete metrics
-4. Explanation speaks DIRECTLY to developer: "You did X, change to Y"
-5. Patches show real before/after code from the source files
-6. failure_points reference REAL file:line from code above"""
+2. risk_score MUST be consistent: CRITICAL=76-100, HIGH=51-75, MEDIUM=26-50, LOW=0-25
+3. Scale up evidence numbers to simulate production traffic (hundreds/thousands)
+4. Group failure_points by category (Input Validation, Concurrency, Data Consistency, Error Handling). Omit empty categories.
+5. Timeline uses seconds (0s, 7s, 15s etc) with concrete metrics
+6. Explanation is 2-3 paragraphs, written like an SRE postmortem
+7. Each patch includes a reason explaining WHY the fix works
+8. Reference REAL file:line from the code above"""
 
     return prompt
