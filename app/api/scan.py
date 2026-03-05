@@ -27,6 +27,7 @@ from app.core.edge_cases import run_edge_cases
 from app.core.curl_runner import run_curl_tests
 from app.core.s3_storage import upload_artifact
 from app.core.ec2_client import send_to_sandbox, FALLBACK_RESULT
+from app.core.call_graph import build_interaction_map
 from app.ai.bedrock import invoke_bedrock, FALLBACK_RESPONSE
 from app.ai.prompt import build_bedrock_prompt
 
@@ -205,6 +206,11 @@ async def scan(request: Request):
             logger.warning(f"Skipping Bedrock — {elapsed:.1f}s elapsed.")
             bedrock_story = FALLBACK_RESPONSE
 
+        # ── Step 10: Service Interaction Map ───────────────────
+        interaction_map = build_interaction_map(
+            files, bedrock_story.get("failure_points")
+        )
+
         # ── Build response ────────────────────────────────────
         return JSONResponse(content={
             "scan_id": scan_id,
@@ -216,6 +222,7 @@ async def scan(request: Request):
                 "edge_cases": edge_cases,
                 "curl_results": curl_results,
             },
+            "interaction_map": interaction_map,
             "deployment_validation": deployment,
             "ai_analysis": bedrock_story,
             "s3_artifact": s3_info,
