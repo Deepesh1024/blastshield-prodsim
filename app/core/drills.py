@@ -15,10 +15,11 @@ from app.core.extract import detect_functions, detect_io_functions
 # 1. Concurrency Drill
 # ---------------------------------------------------------------------------
 
-def run_concurrency_drill(files: list[dict]) -> list[dict]:
+def run_concurrency_drill(files: list[dict], scenario: dict = None) -> list[dict]:
     """
     Spawn 30-100 threads calling detected functions with shared state.
     Detect lost updates, inconsistent state, race-like behaviors.
+    Scenario 'traffic' (0-100) scales the number of threads.
     """
     funcs = detect_functions(files)
     if not funcs:
@@ -28,7 +29,9 @@ def run_concurrency_drill(files: list[dict]) -> list[dict]:
     issues: list[dict] = []
     shared_counter = {"value": 0}
     lock_for_reading = threading.Lock()
-    num_threads = min(30 + len(funcs) * 10, 100)
+    
+    traffic = scenario.get("traffic", 50) if scenario else 50
+    num_threads = min(10 + int(traffic * 0.9), 100)
 
     def _worker(fn: dict, idx: int):
         time.sleep(random.uniform(0, 0.01))  # 0-10ms jitter
@@ -97,10 +100,11 @@ def run_concurrency_drill(files: list[dict]) -> list[dict]:
 
 LATENCY_TIMEOUT = 2.0  # seconds
 
-def run_latency_drill(files: list[dict]) -> list[dict]:
+def run_latency_drill(files: list[dict], scenario: dict = None) -> list[dict]:
     """
     Inject artificial latency into suspected I/O functions.
     Detect long-blocking behavior and timeouts.
+    Scenario 'latency' (ms) overrides the injected delay.
     """
     io_funcs = detect_io_functions(files)
     if not io_funcs:
@@ -109,7 +113,11 @@ def run_latency_drill(files: list[dict]) -> list[dict]:
     issues: list[dict] = []
 
     for fn in io_funcs:
-        injected_delay = random.uniform(0.5, 3.0)
+        if scenario and "latency" in scenario:
+            injected_delay = float(scenario["latency"]) / 1000.0
+        else:
+            injected_delay = random.uniform(0.5, 3.0)
+
         start = time.monotonic()
         time.sleep(min(injected_delay, 0.15))  # bounded for Lambda safety
         simulated_duration = injected_delay  # record the *conceptual* delay
@@ -159,10 +167,11 @@ _CHAOS_EXCEPTIONS = [
 ]
 
 
-def run_chaos_drill(files: list[dict]) -> list[dict]:
+def run_chaos_drill(files: list[dict], scenario: dict = None) -> list[dict]:
     """
     Randomly inject exceptions during simulated function calls.
     Collect unhandled exceptions.
+    Scenario 'failure_rate' (0-100) affects crash probability.
     """
     funcs = detect_functions(files)
     if not funcs:
@@ -170,8 +179,12 @@ def run_chaos_drill(files: list[dict]) -> list[dict]:
                  "detail": "No functions detected to test."}]
 
     issues: list[dict] = []
+    failure_rate = scenario.get("failure_rate", 20) / 100.0 if scenario else 0.2
 
     for fn in funcs:
+        if random.random() > failure_rate:
+            continue
+
         exc = random.choice(_CHAOS_EXCEPTIONS)
         handled = _simulate_chaos_call(fn, exc)
         if not handled:

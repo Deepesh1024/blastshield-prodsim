@@ -99,29 +99,41 @@ async def _extract_input(request: Request) -> tuple:
     """
     Flexibly extract code or zip file from the request.
     Supports: JSON body, form-urlencoded, multipart/form-data.
+    Now also extracts optional 'scenario' dictionary.
     """
     content_type = request.headers.get("content-type", "")
+    scenario = None
 
-    # 1. JSON body: {"code": "..."}
+    # 1. JSON body: {"code": "...", "scenario": {...}}
     if "application/json" in content_type:
         body = await request.json()
         code = body.get("code")
+        scenario = body.get("scenario")
         if code:
-            return "code", code
+            return "code", code, scenario
         raise HTTPException(400, "JSON body must contain a 'code' field.")
 
     # 2. Multipart form-data (file upload or code field)
     if "multipart/form-data" in content_type:
         form = await request.form()
+        
+        # Scenario from form field (likely stringified JSON)
+        scenario_raw = form.get("scenario")
+        if scenario_raw:
+            try:
+                scenario = json.loads(str(scenario_raw))
+            except:
+                pass
+
         upload = form.get("file")
         if upload and hasattr(upload, "filename") and upload.filename:
             if not upload.filename.endswith(".zip"):
                 raise HTTPException(400, "Only .zip files are supported.")
             zip_bytes = await upload.read()
-            return "zip", zip_bytes
+            return "zip", zip_bytes, scenario
         code = form.get("code")
         if code:
-            return "code", str(code)
+            return "code", str(code), scenario
         raise HTTPException(400, "Multipart form must contain 'file' (zip) or 'code' field.")
 
     # 3. Form-urlencoded: code=...
@@ -129,7 +141,7 @@ async def _extract_input(request: Request) -> tuple:
         form = await request.form()
         code = form.get("code")
         if code:
-            return "code", str(code)
+            return "code", str(code), None
         raise HTTPException(400, "Form must contain a 'code' field.")
 
     raise HTTPException(400, "Unsupported content type. Use JSON, form-urlencoded, or multipart/form-data.")
@@ -146,7 +158,7 @@ async def scan(request: Request):
 
     try:
         # ── Step 1: Extract files ──────────────────────────────
-        input_type, input_data = await _extract_input(request)
+        input_type, input_data, scenario = await _extract_input(request)
         if input_type == "zip":
             files = extract_files_from_zip(input_data)
             zip_bytes = input_data  # already a zip
@@ -164,9 +176,9 @@ async def scan(request: Request):
         endpoints = detect_endpoints(files)
 
         # ── Step 4: Run local drills ──────────────────────────
-        concurrency = run_concurrency_drill(files)
-        latency = run_latency_drill(files)
-        chaos = run_chaos_drill(files)
+        concurrency = run_concurrency_drill(files, scenario=scenario)
+        latency = run_latency_drill(files, scenario=scenario)
+        chaos = run_chaos_drill(files, scenario=scenario)
 
         drills = {
             "concurrency": concurrency,
@@ -200,6 +212,7 @@ async def scan(request: Request):
             prompt = build_bedrock_prompt(
                 files, endpoints, concurrency, latency, chaos,
                 edge_cases, curl_results,
+                scenario=scenario,
             )
             bedrock_story = invoke_bedrock(prompt)
         else:

@@ -13,6 +13,7 @@ def build_bedrock_prompt(
     chaos_results: list[dict],
     edge_case_results: list[dict],
     curl_results: list[dict],
+    scenario: dict = None,
 ) -> str:
     """
     Construct a structured prompt for Bedrock AI.
@@ -53,8 +54,12 @@ Concurrency: {json.dumps(conc_short, indent=1)}
 Latency: {json.dumps(lat_short, indent=1)}
 Chaos: {json.dumps(chaos_short, indent=1)}
 
-## EVIDENCE COUNTS
+## TEST SCENARIO (ACTIVE)
+{json.dumps(scenario, indent=1) if scenario else "Default load (50% traffic, 2s latency budget, 20% failure injection)"}
+
+## EVIDENCE COUNTS (raw, from a burst test)
 lost_updates={lost_updates}, shared_state={shared_state}, timeouts={timeouts}, slow_responses={slow}, exceptions={exceptions}, edge_failures={edge_fails}, endpoints={len(endpoints)}
+Test scale: ~{50 if not scenario else scenario.get('traffic', 50)} threads, {20 if not scenario else scenario.get('failure_rate', 20)}% failure injection
 
 ---
 
@@ -94,7 +99,7 @@ Return ONLY valid JSON with these keys:
 RULES:
 1. ONLY valid JSON, no markdown
 2. risk_score MUST be consistent: CRITICAL=76-100, HIGH=51-75, MEDIUM=26-50, LOW=0-25
-3. Scale up evidence numbers to simulate production traffic (hundreds/thousands)
+3. Evidence counts must be REALISTIC for a small app (few files, routes, a DB). Use the raw counts as a baseline and scale by at most 5-15x to reflect a realistic burst scenario — NOT thousands unless the raw count itself is already in the hundreds. Example: raw lost_updates=1 → report 5-15, NOT 500.
 4. Group failure_points by category (Input Validation, Concurrency, Data Consistency, Error Handling). Omit empty categories.
 5. Timeline uses seconds (0s, 7s, 15s etc) with concrete metrics
 6. Explanation is 2-3 paragraphs, written like an SRE postmortem
