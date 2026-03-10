@@ -107,3 +107,7 @@ RULES:
 8. Reference REAL file:line from the code above"""
 
     return prompt
+
+# Documented code
+
+# Documented code

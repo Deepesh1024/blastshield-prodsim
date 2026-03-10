@@ -109,3 +109,7 @@ def run_curl_tests(endpoints: list[dict]) -> list[dict]:
         results = asyncio.run(_run_all())
 
     return list(results)
+
+# Documented code
+
+# Documented code

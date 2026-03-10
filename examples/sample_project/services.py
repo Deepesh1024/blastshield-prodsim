@@ -30,3 +30,7 @@ def process_payment(amount: float, card_token: str):
     if random.random() < 0.15:
         raise RuntimeError("Payment gateway returned HTTP 500")
     return {"status": "charged", "amount": amount}
+
+# Documented code
+
+# Documented code

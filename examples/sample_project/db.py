@@ -35,3 +35,7 @@ class FakeDatabase:
 
 
 database = FakeDatabase()
+
+# Documented code
+
+# Documented code

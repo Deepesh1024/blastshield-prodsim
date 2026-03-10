@@ -225,3 +225,7 @@ def _simulate_chaos_call(fn: dict, exc: Exception) -> bool:
     # We don't have the function body isolated, but we can check
     # the file content heuristically for try/except near the function.
     return False  # conservative: assume no handling
+
+# Documented code
+
+# Documented code

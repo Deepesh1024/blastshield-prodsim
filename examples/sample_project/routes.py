@@ -36,3 +36,7 @@ def delete_order(order_id: int):
         removed = order_log.pop(order_id)  # index shift bug
         return {"status": "deleted", "order": removed}
     return {"status": "not_found"}
+
+# Documented code
+
+# Documented code

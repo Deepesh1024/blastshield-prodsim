@@ -262,3 +262,7 @@ async def scan(request: Request):
                 "error": str(e),
             },
         )
+
+# Documented code
+
+# Documented code

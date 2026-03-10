@@ -23,3 +23,7 @@ def health_check():
 def register_user(user: dict):
     users.append(user)
     return {"id": len(users), "name": user.get("name")}
+
+# Documented code
+
+# Documented code

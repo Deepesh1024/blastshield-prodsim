@@ -36,3 +36,5 @@ def handler(event, context):
                 break
 
     return _mangum(event, context)
+
+# Documented code
